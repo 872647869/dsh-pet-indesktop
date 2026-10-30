@@ -197,6 +197,24 @@ def _on_post_tool_call(**kwargs: Any) -> None:
             _set_session_state(state, kwargs)
 
 
+def _on_post_llm_call(**kwargs: Any) -> None:
+    """Settle the turn as soon as the final assistant reply is produced.
+
+    Hermes fires ``post_llm_call`` exactly once per successful turn, after the
+    tool-calling loop has finished. No debounce is needed here: setting the
+    session to idle is enough. Interrupted or reply-less turns never fire this
+    hook, and ``on_session_end`` still covers those.
+    """
+    if _is_api_server_session(kwargs):
+        return
+    with _LOCK:
+        key = _session_key(kwargs)
+        _SESSION_STATES[key] = "idle"
+        _ACTIVE_TOOLS.pop(key, None)
+        _FOREGROUND_TURNS.discard(key)
+        _append_event(_aggregate_state())
+
+
 def _on_session_end(**kwargs: Any) -> None:
     if _is_api_server_session(kwargs, clear=True):
         with _LOCK:
@@ -242,6 +260,7 @@ def register(ctx: Any) -> None:
     ctx.register_hook("pre_llm_call", _on_pre_llm_call)
     ctx.register_hook("pre_tool_call", _on_pre_tool_call)
     ctx.register_hook("post_tool_call", _on_post_tool_call)
+    ctx.register_hook("post_llm_call", _on_post_llm_call)
     ctx.register_hook("on_session_end", _on_session_end)
     ctx.register_hook("on_human_input_request", _on_human_input_request)
     ctx.register_hook("on_human_input_resolved", _on_human_input_resolved)

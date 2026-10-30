@@ -36,6 +36,12 @@ state after the real turn ends. Track attestation and state by stable turn ID
 (session IDs can rotate during compression), and remove it on end. Callers
 without turn IDs retain the older single-session compatibility behavior.
 
+Turn completion is settled by `post_llm_call`, which Hermes fires exactly once per
+successful turn, after the tool-calling loop finishes and the final reply is
+produced. The bridge marks the turn idle there, so the pet returns to idle as
+soon as the answer lands instead of waiting for session end. Interrupted or
+reply-less turns never fire the hook; `on_session_end` still retires those.
+
 Limitations: this bridge has no heartbeat, log rotation, or process-death cleanup.
 A writer killed without an end hook can leave a stale busy shard in the custom
 reader until the monitor is reset; the DSH-specific PID retirement path is not
